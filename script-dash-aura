@@ -1,0 +1,119 @@
+import pandas as pd
+import numpy as np
+from matplotlib import pyplot as plt
+import plotly.express as px
+from math import ceil
+import csv
+import psycopg2
+
+# Cargar el archivo de Excel en un DataFrame de pandas
+dfespecialista = pd.read_excel('/content/ptaura_2.xlsx')
+
+# Convierte la columna 'fecha' al tipo de dato datetime
+dfespecialista["Fecha"] = pd.to_datetime(dfespecialista["Fecha"])
+dfespecialista['Ejemplares recolectados'] = dfespecialista['Ejemplares recolectados'].fillna(1).astype(int)
+dfespecialista['Ejemplares recolectados'] = dfespecialista['Ejemplares recolectados'].astype(int)
+# Mostrar el DataFrame
+dfespecialista
+
+
+# Cargar el archivo de Excel en un DataFrame de pandas
+dflista = pd.read_excel('/content/ptlista.xlsx')
+# Mostrar el DataFrame
+dflista
+
+# juntamos los df de los especialistas con el df lista para que en uno sólo nos de sus caracteristicas
+resultado = pd.merge(dfespecialista, dflista, how="left").reset_index(drop=True)
+
+resultado.fillna(0)
+
+# Apply the function to the column, handling missing values:
+resultado = dfespecialista
+resultado['Ejemplares ajustados'] = resultado['Ejemplares recolectados'].apply(lambda x: ceil(x / 1.2) if not pd.isna(x) else None)
+resultado
+
+# codigo para agregar la columna de # numero de rescate"
+# viene de la formula =CONTAR.SI.CONJUNTO($B$1:B2154,[@Frente],$D$1:D2154,[@Especie])
+resultado['Num rescate'] = resultado.groupby(['Frente', 'Especie']).cumcount() + 1
+resultado
+
+# este script es para generar la columna de rango
+# viene del dataframe de resultado
+# result.sort_values(['fecha', 'frente', 'especie'], inplace=True)
+
+# Realizar la suma acumulativa condicional utilizando transform y groupby
+resultado ['Rango'] = resultado.groupby(['Especie', 'Frente'])['Ejemplares ajustados'].transform(pd.Series.cumsum)
+resultado
+
+# para generar la columna rango 2
+# viene de la formula siguiente
+# =SI([@[Ejemplares ajustados]]=1,
+# SI([@[Num rescate]]<=1,"1 - "&[@Rango],@INDICE(J:J,FILA()-1)& " - "&[@Rango]),
+# SI([@[Num rescate]]<=1,"1 - "&[@Rango],@INDICE(J:J,FILA()-1)+1& " - "&[@Rango]))
+resultado['Rango2'] = ''  # Initialize an empty column
+
+for i in range(len(resultado)):
+    if resultado.loc[i, 'Ejemplares ajustados'] == 1:
+        if resultado.loc[i, 'Num rescate'] <= 1:
+            resultado.loc[i, 'Rango2'] = "1 - " + str(resultado.loc[i, 'Rango'])
+        else:
+            resultado.loc[i, 'Rango2'] = (str(resultado.loc[i-1, 'Rango']) if i > 0 else '0') + " - " + str(resultado.loc[i, 'Rango'])
+    else:
+        if resultado.loc[i, 'Num rescate'] <= 1:
+            resultado.loc[i, 'Rango2'] = "1 - " + str(resultado.loc[i, 'Rango'])
+        else:
+            resultado.loc[i, 'Rango2'] = str(int(resultado.loc[i-1, 'Rango']) + 1 if i > 0 else 1) + " - " + str(resultado.loc[i, 'Rango'])
+
+print(resultado)
+
+# Es para generar la etiqueta
+# viene de la formula ="R"&[@[Num rescate]]&" / " &[@Rango2] & " / " &[@[Clave sp]]& " / " & [@Frente]
+# Crear una nueva columna llamada 'Etiqueta' que contiene la cadena construida
+resultado['Etiqueta'] = 'R' + resultado['Num rescate'].astype(str) + " / " + resultado['Rango 2'] + " / " + resultado['Clave sp'] + " / " + resultado['Frente']
+
+# Mostrar el resultado
+resultado
+
+
+
+###################################
+
+# Función para conectar a la base de datos
+def conectar():
+    conexion = psycopg2.connect(
+        dbname="AURA",
+        user="postgres",
+        password="carbonaro233",
+        host="localhost",
+        port="5432"
+    )
+    return conexion
+
+# Función para insertar los datos del CSV en la base de datos
+def insertar_datos():
+    # Conectar a la base de datos
+    conexion = conectar()
+    cursor = conexion.cursor()
+
+    # Leer el archivo CSV
+    with open('datos.csv', 'r', encoding='utf-8') as archivo_csv:
+        lector_csv = csv.reader(archivo_csv)
+        next(lector_csv)  # Saltar la primera fila si contiene encabezados
+
+        # Iterar sobre las filas del CSV e insertarlas en la base de datos
+        for fila in lector_csv:
+            # Construir la consulta SQL de inserción
+            consulta = """
+            INSERT INTO datos ("fecha", "frente", "familia", "especie", "nombre_comun", "forma_biologica", "ejemplares_ajustados", "tecnica_de_rescate", "num_rescate", "rango", "rango_2", "clave_sp", "dsm", "altura", "condicion_fisica", "condicion_fitosanitaria", "nom_059", "iucn", "cites", "clave_de_etiqueta", "x_inicio", "y_inicio", "x3", "y3", "x_final", "y_final", "x4", "y4", "ejemplares_recolectados", "propagacion", "prof_mo")
+            VALUES ('%Y-%m-%d', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, %d, %d, %d, %d, '%s', '%s');
+            """
+            # Ejecutar la consulta SQL con los datos de la fila actual
+            cursor.execute(consulta, fila)
+
+    # Confirmar los cambios y cerrar la conexión
+    conexion.commit()
+    conexion.close()
+
+# Llamar a la función para insertar los datos
+insertar_datos()
+
