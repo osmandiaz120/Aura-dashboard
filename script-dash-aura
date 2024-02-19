@@ -76,8 +76,7 @@ resultado
 
 
 
-import psycopg2
-import csv
+######## script para generar reporte##############
 
 def conectar():
     try:
@@ -148,3 +147,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
