@@ -76,44 +76,75 @@ resultado
 
 
 
-###################################
+import psycopg2
+import csv
 
-# Función para conectar a la base de datos
 def conectar():
-    conexion = psycopg2.connect(
-        dbname="AURA",
-        user="postgres",
-        password="carbonaro233",
-        host="localhost",
-        port="5432"
-    )
-    return conexion
+    try:
+        conexion = psycopg2.connect(
+            dbname="AURA",
+            user="postgres",
+            password="carbonaro233",
+            host="localhost",
+            port="5432"
+        )
+        return conexion
+    except psycopg2.Error as e:
+        print("Error al conectar a la base de datos:", e)
 
-# Función para insertar los datos del CSV en la base de datos
 def insertar_datos():
-    # Conectar a la base de datos
     conexion = conectar()
     cursor = conexion.cursor()
 
-    # Leer el archivo CSV
     with open('datos.csv', 'r', encoding='utf-8') as archivo_csv:
         lector_csv = csv.reader(archivo_csv)
-        next(lector_csv)  # Saltar la primera fila si contiene encabezados
+        next(lector_csv)
 
-        # Iterar sobre las filas del CSV e insertarlas en la base de datos
         for fila in lector_csv:
-            # Construir la consulta SQL de inserción
             consulta = """
             INSERT INTO datos ("fecha", "frente", "familia", "especie", "nombre_comun", "forma_biologica", "ejemplares_ajustados", "tecnica_de_rescate", "num_rescate", "rango", "rango_2", "clave_sp", "dsm", "altura", "condicion_fisica", "condicion_fitosanitaria", "nom_059", "iucn", "cites", "clave_de_etiqueta", "x_inicio", "y_inicio", "x3", "y3", "x_final", "y_final", "x4", "y4", "ejemplares_recolectados", "propagacion", "prof_mo")
-            VALUES ('%Y-%m-%d', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s', %d, %d, %d, %d, %d, %d, %d, %d, %d, '%s', '%s');
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
-            # Ejecutar la consulta SQL con los datos de la fila actual
             cursor.execute(consulta, fila)
 
-    # Confirmar los cambios y cerrar la conexión
     conexion.commit()
     conexion.close()
 
-# Llamar a la función para insertar los datos
-insertar_datos()
+def ejecutar_query(conexion, query, parametros):
+    try:
+        cursor = conexion.cursor()
+        cursor.execute(query, parametros)
+        resultados = cursor.fetchall()
+        cursor.close()
+        return resultados
+    except psycopg2.Error as e:
+        print("Error al ejecutar la consulta:", e)
 
+def generar_reporte(resultados):
+    for fila in resultados:
+        print(fila)
+
+def main():
+    conexion = conectar()
+
+    fecha = input("Ingrese la fecha (YYYY-MM-DD): ")
+    frente = input("Ingrese el frente: ")
+    familia = input("Ingrese la familia: ")
+    especie = input("Ingrese la especie:")
+
+    query = """
+        SELECT *
+        FROM tu_tabla
+        WHERE fecha = %s AND frente = %s AND familia = %s AND especie = %s
+    """
+
+    parametros = (fecha, frente, familia, especie)
+
+    resultados = ejecutar_query(conexion, query, parametros)
+
+    generar_reporte(resultados)
+
+    conexion.close()
+
+if __name__ == "__main__":
+    main()
